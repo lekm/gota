@@ -4,7 +4,7 @@ import { Monster } from './entities/Monster'
 import type { Item } from './items/Item' // Import Item type
 import { useInventoryStore, type EquippedItems } from '@/store/inventoryStore' // Import zustand store and EquippedItems type
 import { useCombatLogStore } from '@/store/combatLogStore' // Import combat log store
-import { useGameSessionStore, type GameStatus, type GameOverReason } from '@/store/gameSessionStore' // Import session store, GameStatus, and GameOverReason
+import { useGameSessionStore, type GameStatus, type GameOverReason } from '@/store/gameSessionStore' // Import session store and GameStatus
 
 class GameManager {
   private renderer: Renderer
@@ -30,7 +30,7 @@ class GameManager {
   private setSessionWave: (wave: number) => void
   private setSessionTime: (time: number) => void
   private setSessionGameOver: (isOver: boolean) => void
-  private setSessionGameState: (status: GameStatus, reason?: GameOverReason) => void // Ref to action
+  private setSessionGameState: (status: GameStatus, reason?: GameOverReason) => void // Correct signature
   private resetSessionStore: () => void
 
   constructor (context: CanvasRenderingContext2D) {
@@ -220,7 +220,7 @@ class GameManager {
 
   private gameOver (heroSurvived: boolean) {
     const reason: GameOverReason = heroSurvived ? 'TimeUp' : 'Defeat'
-    this.setSessionGameState('GameOver', reason) // Pass the reason
+    this.setSessionGameState('GameOver', reason) // Pass the reason correctly
     if (!heroSurvived) {
       this.addLogMessage('Session ended: Hero defeated!')
       // console.log('Hero was defeated!')
@@ -241,15 +241,21 @@ class GameManager {
   }
 
   start () {
-    // Prevent starting if already in progress
-    if (this.isRunning || useGameSessionStore.getState().gameState === 'InProgress') {
-        console.warn('Game already in progress, cannot start again.');
+    // Check only internal 'isRunning' flag now
+    if (this.isRunning) {
+        console.warn('GameManager.start() called but already running.');
         return;
     }
     console.log('Starting game session via GameManager.start()...')
+    // Initialize must happen first
     this.initializeGameState(this.renderer.getCanvasWidth(), this.renderer.getCanvasHeight())
+    
+    // Set internal running flag
     this.isRunning = true
-    this.setSessionGameState('InProgress') // Set state to InProgress
+    
+    // NOW set the global state for UI reactions
+    this.setSessionGameState('InProgress') 
+    
     this.lastTimestamp = performance.now()
     this.animationFrameId = requestAnimationFrame(this.gameLoop)
   }

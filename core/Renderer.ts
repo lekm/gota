@@ -1,5 +1,6 @@
 import type { Hero } from './entities/Hero'
 import type { Monster } from './entities/Monster'
+import { useInventoryStore } from '@/store/inventoryStore'
 
 class Renderer {
   private context: CanvasRenderingContext2D
@@ -50,6 +51,11 @@ class Renderer {
 
     // Draw Hero
     if (hero && hero.isAlive()) {
+      // Get current effective stats based on equipped items (fetched by GameManager)
+      // Note: GameManager now passes updated equipped items to hero methods when needed.
+      // Renderer just needs the hero instance itself.
+      const effectiveStats = hero.getEffectiveStats(useInventoryStore.getState().equippedItems) // Fetch latest gear state
+      
       const heroX = hero.x
       const heroY = hero.y
       const heroSize = 30
@@ -60,8 +66,8 @@ class Renderer {
         heroY - heroSize / 2 - healthBarOffsetY,
         healthBarWidth,
         healthBarHeight,
-        hero.stats.health,
-        hero.stats.maxHealth
+        effectiveStats.health, // Use effective health
+        effectiveStats.maxHealth // Use effective max health
       )
     }
 
