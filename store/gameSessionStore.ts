@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { HeroStats, DetailedHeroStats } from '@/core/entities/Hero'
+import type { GravyEffect } from '@/core/types/effects'
 
 export type GameStatus = 'NotStarted' | 'InProgress' | 'GameOver'
 // Define reasons for game over
@@ -20,6 +21,7 @@ interface GameSessionState {
   gameOverReason: GameOverReason // Added reason
   heroLevel: number // Added hero level
   heroXPInfo: HeroXPInfo | null // Added XP details
+  activeEffects: GravyEffect[] // New state for active buffs
   // Actions
   updateHeroStats: (stats: DetailedHeroStats | null) => void // Action takes the detailed object
   setWaveNumber: (wave: number) => void
@@ -27,6 +29,8 @@ interface GameSessionState {
   setGameOver: (isOver: boolean) => void // Might deprecate later in favor of gameState
   setGameState: (status: GameStatus, reason?: GameOverReason) => void // Add optional reason param
   setHeroLevelAndXP: (level: number, xpInfo: HeroXPInfo | null) => void // New action
+  addActiveEffect: (effect: GravyEffect) => void // New action
+  updateActiveEffects: (deltaTime: number) => void // New action
   resetSession: () => void
 }
 
@@ -38,10 +42,11 @@ const initialState = {
   gameState: 'NotStarted' as GameStatus, // Initial state
   gameOverReason: null, // Initial reason is null
   heroLevel: 0, // Initial level 0 or 1?
-  heroXPInfo: null // Initial XP null
+  heroXPInfo: null, // Initial XP null
+  activeEffects: [] // Initialize as empty array
 }
 
-const useGameSessionStore = create<GameSessionState>((set) => ({
+const useGameSessionStore = create<GameSessionState>((set, get) => ({
   ...initialState,
   // Ensure we store a deep copy if needed, or just the object reference
   updateHeroStats: (stats) => set({ heroStats: stats ? { ...stats } : null }),
@@ -57,6 +62,16 @@ const useGameSessionStore = create<GameSessionState>((set) => ({
     heroLevel: level,
     heroXPInfo: xpInfo ? { ...xpInfo } : null 
   }),
+  addActiveEffect: (effect) => set((state) => ({
+    // Prevent stacking identical effects from the same source? Optional.
+    // For now, just add it.
+    activeEffects: [...state.activeEffects, effect]
+  })),
+  updateActiveEffects: (deltaTime) => set((state) => ({
+    activeEffects: state.activeEffects
+      .map(effect => ({ ...effect, duration: effect.duration - deltaTime }))
+      .filter(effect => effect.duration > 0)
+  })),
   resetSession: () => set(initialState) // Resets level and XP too
 }))
 

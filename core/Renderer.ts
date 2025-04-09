@@ -9,6 +9,10 @@ class Renderer {
     this.context = context
   }
 
+  getCanvas(): HTMLCanvasElement {
+    return this.context.canvas
+  }
+
   getCanvasWidth (): number {
     return this.context.canvas.width
   }

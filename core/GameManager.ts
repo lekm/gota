@@ -5,6 +5,8 @@ import type { Item } from './items/Item' // Import Item type
 import { useInventoryStore, type EquippedItems } from '@/store/inventoryStore' // Import zustand store and EquippedItems type
 import { useCombatLogStore } from '@/store/combatLogStore' // Import combat log store
 import { useGameSessionStore, type GameStatus, type GameOverReason, type HeroXPInfo } from '@/store/gameSessionStore' // Import session store and GameStatus, GameOverReason
+import type { GravyEffect } from '@/core/types/effects'
+import { BASE_GRAVIES, createGravyInstance } from '@/core/items/gravyDefinitions'
 
 class GameManager {
   private renderer: Renderer
@@ -33,6 +35,8 @@ class GameManager {
   private setSessionGameState: (status: GameStatus, reason?: GameOverReason) => void // Correct signature
   private setHeroLevelAndXPStore: (level: number, xpInfo: HeroXPInfo | null) => void // Ref to new action
   private resetSessionStore: () => void
+  private addActiveEffect: (effect: GravyEffect) => void
+  private updateActiveEffects: (deltaTime: number) => void
 
   constructor (context: CanvasRenderingContext2D) {
     this.renderer = new Renderer(context)
@@ -48,37 +52,42 @@ class GameManager {
     this.setSessionGameState = sessionStoreActions.setGameState
     this.setHeroLevelAndXPStore = sessionStoreActions.setHeroLevelAndXP // Get new action
     this.resetSessionStore = sessionStoreActions.resetSession
+    this.addActiveEffect = sessionStoreActions.addActiveEffect // Get new action
+    this.updateActiveEffects = sessionStoreActions.updateActiveEffects // Get new action
 
     // Don't initialize game immediately, wait for start() call
     // this.initializeGameState(context.canvas.width, context.canvas.height)
   }
 
   private initializeGameState (canvasWidth: number, canvasHeight: number) {
-    this.resetSessionStore()
+    console.log('[GameManager] Initializing game state...');
+    this.resetSessionStore() // Resets stats, wave, time, effects etc.
     useCombatLogStore.getState().clearLog()
-    // State is set to InProgress by start() method
 
-    // Reset state for a new game
     this.elapsedTime = 0
     this.waveNumber = 1
     this.lastHeroAttackTime = 0
     this.lastMonsterAttackTimes.clear()
     this.lastTimestamp = 0
 
-    // Get currently equipped items from the store
     const equippedItems = useInventoryStore.getState().equippedItems
+    console.log('[GameManager] Creating Hero...');
+    this.hero = new Hero(100, canvasHeight / 2, equippedItems)
+    console.log('[GameManager] Hero created:', this.hero);
 
-    // Create the hero
-    this.hero = new Hero(100, canvasHeight / 2, useInventoryStore.getState().equippedItems)
-    // Initial sync of all session state
-    this.updateSessionStats(this.hero.getEffectiveStats(useInventoryStore.getState().equippedItems))
+    console.log('[GameManager] Syncing initial stats...');
+    const initialDetailedStats = this.hero.getEffectiveStats(equippedItems, []) // Start with no effects
+    this.updateSessionStats(initialDetailedStats)
     this.setHeroLevelAndXPStore(this.hero.level, { currentXP: this.hero.currentXP, xpToNextLevel: this.hero.xpToNextLevel })
     this.setSessionWave(this.waveNumber)
-    this.setSessionTime(this.sessionTimeLimit) // Set initial time
+    this.setSessionTime(this.sessionTimeLimit)
+    console.log('[GameManager] Initial stats synced.');
 
+    console.log('[GameManager] Spawning wave...');
     this.spawnWave(canvasWidth, canvasHeight)
+    console.log('[GameManager] Wave spawned. Monsters:', this.monsters);
 
-    // console.log('Game state initialized:', this.hero, this.monsters)
+    console.log('[GameManager] Game state initialization complete.');
   }
 
   private spawnWave (canvasWidth: number, canvasHeight: number) {
@@ -104,23 +113,35 @@ class GameManager {
   }
 
   private gameLoop = (timestamp: number) => {
-    if (!this.isRunning || useGameSessionStore.getState().gameState !== 'InProgress') return // Check state
+    const currentState = useGameSessionStore.getState().gameState;
+    // Log loop entry and state check
+    console.log(`[GameManager] gameLoop running. Timestamp: ${timestamp}, isRunning: ${this.isRunning}, gameState: ${currentState}`); 
 
-    // Calculate delta time for time-based calculations
+    if (!this.isRunning || currentState !== 'InProgress') {
+        // Log WHY the loop is exiting
+        console.log(`[GameManager] gameLoop exit condition met. isRunning: ${this.isRunning}, gameState: ${currentState}`); 
+        return; 
+    }
+
     const deltaTime = (timestamp - (this.lastTimestamp || timestamp)) / 1000 // in seconds
     this.lastTimestamp = timestamp
 
-    // 1. Update game state
-    this.update(deltaTime)
+    // Log before update and render
+    // console.log(`[GameManager] DeltaTime: ${deltaTime.toFixed(4)}s`);
+    try {
+        this.update(deltaTime);
+        this.render();
+    } catch (error) {
+        console.error("[GameManager] Error in update/render loop:", error);
+        this.stop(); // Stop the loop on error
+        this.setSessionGameState('NotStarted'); // Reset state
+    }
 
-    // 2. Render the current game state
-    this.render()
-
-    // 3. Request the next frame
     this.animationFrameId = requestAnimationFrame(this.gameLoop)
   }
 
   private update (deltaTime: number) {
+    // console.log('[GameManager] update starting...');
     // Check for game over conditions
     if (useGameSessionStore.getState().gameState !== 'InProgress') return // Ensure game is running
 
@@ -141,7 +162,11 @@ class GameManager {
 
     const currentTime = performance.now()
     const equippedItems = useInventoryStore.getState().equippedItems
-    const effectiveStats = this.hero?.getEffectiveStats(equippedItems)
+    const activeEffects = useGameSessionStore.getState().activeEffects
+    const effectiveStats = this.hero?.getEffectiveStats(equippedItems, activeEffects)
+
+    // Update active effects duration FIRST
+    this.updateActiveEffects(deltaTime);
 
     // Re-sync store stats every frame
     if (this.hero && effectiveStats) {
@@ -191,7 +216,7 @@ class GameManager {
           this.addLogMessage(`${monster.name} hits Hero for ${damageDealt} damage.`)
           
           // Sync stats immediately after damage taken
-          const updatedDetailedStats = this.hero.getEffectiveStats(equippedItems)
+          const updatedDetailedStats = this.hero.getEffectiveStats(equippedItems, activeEffects)
           this.updateSessionStats(updatedDetailedStats)
           
           if (!this.hero.isAlive()) {
@@ -222,7 +247,7 @@ class GameManager {
                 this.setHeroLevelAndXPStore(this.hero.level, { currentXP: this.hero.currentXP, xpToNextLevel: this.hero.xpToNextLevel })
                 if (leveledUp) {
                     this.addLogMessage(`HERO LEVELED UP to ${this.hero.level}!`);
-                    const leveledUpStats = this.hero.getEffectiveStats(equippedItems)
+                    const leveledUpStats = this.hero.getEffectiveStats(equippedItems, activeEffects)
                     this.updateSessionStats(leveledUpStats)
                 }
             }
@@ -244,7 +269,7 @@ class GameManager {
     
     // Re-sync effective stats at end of frame
     if (this.hero) {
-         const finalDetailedStats = this.hero.getEffectiveStats(equippedItems);
+         const finalDetailedStats = this.hero.getEffectiveStats(equippedItems, activeEffects);
          this.updateSessionStats(finalDetailedStats);
     }
 
@@ -257,6 +282,7 @@ class GameManager {
     }
 
     // TODO: Check win conditions (timer is handled above, all waves cleared?)
+    // console.log('[GameManager] update finished.');
   }
 
   private gameOver (heroSurvived: boolean) {
@@ -276,30 +302,45 @@ class GameManager {
   }
 
   private render () {
-    this.renderer.clear()
-    // Renderer can now potentially get state from store if needed,
-    // but for now, keep passing essential entities
-    this.renderer.draw(this.hero, this.monsters) // Pass only entities
+     // Log what is being passed to draw
+     // console.log('[GameManager] render called. Hero:', this.hero, 'Monsters:', this.monsters);
+     this.renderer.clear();
+     this.renderer.draw(this.hero, this.monsters);
+     // console.log('[GameManager] render finished.');
   }
 
   start () {
-    // Check only internal 'isRunning' flag now
+    console.log('[GameManager] Start method called.');
     if (this.isRunning) {
-        console.warn('GameManager.start() called but already running.');
+      console.warn('[GameManager] Start called but game is already running.');
+      return;
+    }
+    
+    const canvas = this.renderer.getCanvas();
+    if (!canvas) {
+        console.error('[GameManager] Cannot start: Canvas not available via Renderer.');
         return;
     }
-    console.log('Starting game session via GameManager.start()...')
-    // Initialize must happen first
-    this.initializeGameState(this.renderer.getCanvasWidth(), this.renderer.getCanvasHeight())
+
+    // Initialize game state FIRST
+    try {
+      console.log('[GameManager] Initializing game state via start()...');
+      this.initializeGameState(canvas.width, canvas.height);
+      console.log('[GameManager] Initialization complete via start().');
+    } catch (error) {
+       console.error('[GameManager] Error during initializeGameState:', error);
+       this.stop(); // Stop if init fails (sets isRunning false)
+       this.setSessionGameState('NotStarted'); // Ensure state is NotStarted
+       return;
+    }
     
-    // Set internal running flag
-    this.isRunning = true
-    
-    // NOW set the global state for UI reactions
-    this.setSessionGameState('InProgress') 
-    
-    this.lastTimestamp = performance.now()
-    this.animationFrameId = requestAnimationFrame(this.gameLoop)
+    // NOW set state to InProgress and start the loop
+    console.log('[GameManager] Setting state to InProgress and starting loop...');
+    this.isRunning = true;
+    this.setSessionGameState('InProgress'); // Set state AFTER init
+    this.lastTimestamp = performance.now(); 
+    this.animationFrameId = requestAnimationFrame(this.gameLoop);
+    console.log('[GameManager] Start method finished.');
   }
 
   stop () { // Internal stop, doesn't change game state directly
@@ -311,6 +352,64 @@ class GameManager {
       this.animationFrameId = null
     }
     // Don't reset stats here, gameOver or restart logic handles state changes
+  }
+
+  // --- New Public Method to Use a Gravy --- 
+  useGravy (gravyBaseId: string): boolean {
+    const gravyData = BASE_GRAVIES[gravyBaseId];
+    if (!gravyData) {
+      console.error(`Attempted to use unknown Gravy: ${gravyBaseId}`);
+      return false;
+    }
+
+    const inventoryState = useInventoryStore.getState();
+    const currentItems = inventoryState.items;
+    const requiredIngredients = Object.entries(gravyData.recipe) as [string, number][];
+    const availableIngredients: Record<string, number> = {};
+    currentItems.forEach(item => {
+      if (item.type === 'Ingredient') {
+        availableIngredients[item.baseId] = (availableIngredients[item.baseId] || 0) + 1;
+      }
+    });
+
+    const canCraft = requiredIngredients.every(([baseId, quantity]) => 
+        (availableIngredients[baseId] || 0) >= quantity
+    );
+
+    if (!canCraft) {
+      this.addLogMessage('Not enough ingredients!');
+      return false;
+    }
+
+    // 2. Consume Ingredients
+    const itemsToRemove: string[] = [];
+    requiredIngredients.forEach(([baseId, quantity]) => {
+      let count = 0;
+      for (const item of currentItems) {
+        if (item.baseId === baseId && count < quantity) {
+          itemsToRemove.push(item.id);
+          count++;
+        }
+        if (count === quantity) break;
+      }
+    });
+    itemsToRemove.forEach(id => inventoryState.removeItemById(id));
+    this.addLogMessage(`Used ingredients for ${gravyData.name}.`);
+
+    // 3. Apply Effect
+    const gravyInstance = createGravyInstance(gravyBaseId); // Reuse function
+    if (gravyInstance) {
+        const effect = gravyInstance.generateEffect();
+        this.addActiveEffect(effect); // Add to store
+        this.addLogMessage(`${gravyData.name} effect applied!`);
+        // Force stat update to reflect buff immediately
+        const currentEffects = useGameSessionStore.getState().activeEffects;
+        const equipped = useInventoryStore.getState().equippedItems;
+        const newStats = this.hero?.getEffectiveStats(equipped, currentEffects);
+        if (newStats) this.updateSessionStats(newStats);
+        return true;
+    }
+    return false; // Should not happen if gravyData existed
   }
 }
 

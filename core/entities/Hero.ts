@@ -2,6 +2,7 @@ import type { Equipment, StatModifier, EquipmentSlot } from '../items/Equipment'
 import type { EquippedItems } from '@/store/inventoryStore' // Import EquippedItems type
 import { calculateXPForLevel, STAT_GAINS_PER_LEVEL } from '../config' // Import leveling config
 import type { GameStat } from '../types/stats' // Import the unified stat type
+import type { GravyEffect } from '../types/effects'
 
 // Structure for detailed stat breakdown
 interface StatBreakdown {
@@ -93,8 +94,8 @@ class Hero {
     // Defense base value is set directly
   }
 
-  // Return the new DetailedHeroStats type
-  getEffectiveStats (equippedItems?: EquippedItems): DetailedHeroStats {
+  // Update getEffectiveStats to accept and apply active effects
+  getEffectiveStats (equippedItems?: EquippedItems, activeEffects?: GravyEffect[]): DetailedHeroStats {
     const detailed: DetailedHeroStats = {
       strength: { base: this.baseStats.strength, gear: 0, final: 0 },
       dexterity: { base: this.baseStats.dexterity, gear: 0, final: 0 },
@@ -148,7 +149,24 @@ class Hero {
 
     detailed.critDamage.final = detailed.critDamage.base + detailed.critDamage.gear;
 
-    // 4. Clamp / Final Adjustments on FINAL values
+    // --- 4. Apply Active Effects --- 
+    if (activeEffects) {
+      activeEffects.forEach(effect => {
+        if (effect.stat in detailed) {
+          const key = effect.stat as keyof DetailedHeroStats;
+          const currentValue = detailed[key].final; // Apply to the already calculated final value
+          if (effect.type === 'flat') {
+            detailed[key].final = currentValue + effect.value;
+          } else if (effect.type === 'percent') {
+            // Ensure percent boosts apply correctly (e.g., 0.2 means +20%)
+            detailed[key].final = currentValue * (1 + effect.value);
+          }
+        }
+      });
+    }
+    
+    // --- 5. Clamp / Final Adjustments --- 
+    // (Clamping happens AFTER effects are applied)
     detailed.attackSpeed.final = Math.max(0.1, detailed.attackSpeed.final);
     detailed.critChance.final = Math.max(0, Math.min(1, detailed.critChance.final));
     detailed.health.final = this.baseStats.health; 
