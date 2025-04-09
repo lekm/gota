@@ -11,26 +11,48 @@ import {
   TooltipTrigger
 } from "@/components/ui/tooltip"
 
-// Define slot positions (adjust Tailwind classes as needed for layout)
+// Reworked slot positions for clarity and no overlap
 const slotPositions: Record<EquipmentSlot, string> = {
-  Helm: 'top-2 left-1/2 -translate-x-1/2', // Centered top
-  Body: 'top-16 left-1/2 -translate-x-1/2', // Centered below helm
-  Weapon: 'top-16 left-4', // Left side
-  Accessory: 'top-16 right-4' // Right side
+  // Top to Bottom Center Column
+  Hat: 'top-0 left-1/2 -translate-x-1/2',
+  'Neck Tatts': 'top-14 left-1/2 -translate-x-1/2',
+  Jacket: 'top-28 left-1/2 -translate-x-1/2',
+  Apron: 'top-42 left-1/2 -translate-x-1/2',     // Moved below Jacket
+  Pants: 'top-56 left-1/2 -translate-x-1/2',     // Moved below Apron
+  Shoes: 'top-72 left-1/2 -translate-x-1/2',    // Moved below Pants
+
+  // Left Column (Aligned with Jacket/Apron)
+  'Main Hand': 'top-28 left-4',
+  'Arm Tatts': 'top-42 left-4',                  
+
+  // Right Column (Aligned with Jacket/Apron)
+  'Off Hand': 'top-28 right-4',
+  Gloves: 'top-42 right-4',
+
+  // Bottom Corners
+  Tobacco: 'bottom-0 left-4',                   // Moved to bottom left
+  Drugs: 'bottom-0 right-4'                    // Moved to bottom right
+  
+  // Back slot is currently removed from EquipmentSlot type, if added back, needs position
 }
 
-// Define the order for mapping if needed, though positions dictate layout now
-const SLOTS_TO_DISPLAY: EquipmentSlot[] = ['Helm', 'Body', 'Weapon', 'Accessory']
+// Updated order/list of slots to display (ensure all 12 are listed)
+const SLOTS_TO_DISPLAY: EquipmentSlot[] = [
+  'Hat', 'Neck Tatts', 'Jacket', 'Pants', 'Shoes', 
+  'Main Hand', 'Off Hand', 'Arm Tatts', 'Gloves', 'Apron',
+  'Tobacco', 'Drugs'
+]
 
 // Helper to get item display properties (similar to Graventory)
 const getItemDisplay = (item: Equipment | null) => {
   if (!item) return { colorClass: 'border-gray-600', content: '' }
+  // Use rarityColor which is already calculated in Equipment class
   const colorClass = `border-${item.rarityColor.replace('text-', '')}` // Use border color
   const content = item.name.substring(0, 2).toUpperCase()
   return { colorClass, content }
 }
 
-// Placeholder Slot Icon Component
+// EquipmentSlotIcon component remains largely the same, but needs slight style adjustment for potential overlap
 function EquipmentSlotIcon ({ slot, item, onUnequip }: {
   slot: EquipmentSlot
   item: Equipment | null
@@ -39,11 +61,16 @@ function EquipmentSlotIcon ({ slot, item, onUnequip }: {
   const { colorClass, content } = getItemDisplay(item)
   const positionClass = slotPositions[slot]
 
-  const slotStyle = `absolute w-12 h-12 border-2 rounded flex items-center justify-center ${positionClass} ${item ? colorClass : 'border-dashed border-gray-600'} bg-gray-700 group-hover:bg-gray-600`
+  // Added z-index based on slot for basic layering, adjust if needed
+  // Flanking items and bottom items get higher z-index
+  const zIndexClass = ['Main Hand', 'Off Hand', 'Arm Tatts', 'Gloves', 'Tobacco', 'Drugs'].includes(slot) ? 'z-10' : 'z-0'
+  
+  const slotStyle = `absolute w-12 h-12 border-2 rounded flex items-center justify-center ${positionClass} ${item ? colorClass : 'border-dashed border-gray-600'} bg-gray-700 hover:bg-gray-600 transition-colors duration-150 ${zIndexClass}`
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
+        {/* Added group class here for button visibility */}
         <div className={`${slotStyle} group`} title={''}>
           {item ? (
             <>
@@ -57,10 +84,12 @@ function EquipmentSlotIcon ({ slot, item, onUnequip }: {
               </button>
             </>
           ) : (
+            // Display first letter of slot name for empty slots
             <span className="text-gray-500 text-xs">{slot.substring(0, 1)}</span>
           )}
         </div>
       </TooltipTrigger>
+      {/* Tooltip Content remains the same */}
       <TooltipContent side="left" align="center" className="bg-gray-900 border-gray-700 text-white p-2 rounded shadow-lg max-w-xs">
         <p className="font-bold text-lg mb-1">{slot}</p>
         {item ? (
@@ -93,8 +122,8 @@ function HeroPaperDoll () {
     <TooltipProvider delayDuration={200}>
       <div className="flex flex-col h-full">
         <h2 className="text-xl font-bold mb-2 flex-shrink-0">Equipment</h2>
-        {/* Main container for the paper doll layout - relative positioning */}
-        <div className="flex-grow border rounded p-2 bg-gray-800 relative min-h-[150px]">
+        {/* Main container - increased min-height again for new layout */}
+        <div className="flex-grow border rounded p-2 bg-gray-800 relative min-h-[350px]">
           {SLOTS_TO_DISPLAY.map((slot) => (
             <EquipmentSlotIcon
               key={slot}

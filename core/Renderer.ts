@@ -66,8 +66,8 @@ class Renderer {
         heroY - heroSize / 2 - healthBarOffsetY,
         healthBarWidth,
         healthBarHeight,
-        effectiveStats.health, // Use effective health
-        effectiveStats.maxHealth // Use effective max health
+        effectiveStats.health.final, // Use .final
+        effectiveStats.maxHealth.final // Use .final
       )
     }
 

@@ -1,8 +1,9 @@
 import { create } from 'zustand'
-import type { HeroStats } from '@/core/entities/Hero'
+import type { HeroStats, DetailedHeroStats } from '@/core/entities/Hero'
 
 export type GameStatus = 'NotStarted' | 'InProgress' | 'GameOver'
-export type GameOverReason = 'Defeat' | 'TimeUp' | null
+// Define reasons for game over
+export type GameOverReason = 'HeroDefeated' | 'TimeExpired' | null;
 
 // Type for XP info
 interface HeroXPInfo {
@@ -11,7 +12,7 @@ interface HeroXPInfo {
 }
 
 interface GameSessionState {
-  heroStats: HeroStats | null
+  heroStats: DetailedHeroStats | null // Store the detailed stats object
   waveNumber: number
   timeRemaining: number
   isGameOver: boolean // Keep this for quick checks, though gameState is more descriptive
@@ -20,7 +21,7 @@ interface GameSessionState {
   heroLevel: number // Added hero level
   heroXPInfo: HeroXPInfo | null // Added XP details
   // Actions
-  updateHeroStats: (stats: HeroStats | null) => void
+  updateHeroStats: (stats: DetailedHeroStats | null) => void // Action takes the detailed object
   setWaveNumber: (wave: number) => void
   setTimeRemaining: (time: number) => void
   setGameOver: (isOver: boolean) => void // Might deprecate later in favor of gameState
@@ -30,7 +31,7 @@ interface GameSessionState {
 }
 
 const initialState = {
-  heroStats: null,
+  heroStats: null, // Initial state is null
   waveNumber: 0,
   timeRemaining: 0,
   isGameOver: false,
@@ -42,7 +43,8 @@ const initialState = {
 
 const useGameSessionStore = create<GameSessionState>((set) => ({
   ...initialState,
-  updateHeroStats: (stats) => set({ heroStats: stats ? { ...stats } : null }), // Store a copy
+  // Ensure we store a deep copy if needed, or just the object reference
+  updateHeroStats: (stats) => set({ heroStats: stats ? { ...stats } : null }),
   setWaveNumber: (wave) => set({ waveNumber: wave }),
   setTimeRemaining: (time) => set({ timeRemaining: Math.max(0, time) }),
   setGameOver: (isOver) => set({ isGameOver: isOver }),
@@ -53,7 +55,6 @@ const useGameSessionStore = create<GameSessionState>((set) => ({
   }),
   setHeroLevelAndXP: (level, xpInfo) => set({ 
     heroLevel: level,
-    // Store a copy of xpInfo if it exists
     heroXPInfo: xpInfo ? { ...xpInfo } : null 
   }),
   resetSession: () => set(initialState) // Resets level and XP too

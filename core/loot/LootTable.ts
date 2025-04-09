@@ -13,10 +13,22 @@ interface LootDrop {
 
 // Base item definitions (could be loaded from a JSON/data file)
 const BASE_ITEMS: Record<string, { name: string, description: string, type: 'Equipment' | 'Ingredient', slot?: EquipmentSlot }> = {
-  spatula_base: { name: 'Spatula', description: 'A basic flipper.', type: 'Equipment', slot: 'Weapon' },
-  colander_helm_base: { name: 'Colander Helm', description: 'Surprisingly protective.', type: 'Equipment', slot: 'Helm' },
+  spatula_base: { name: 'Spatula', description: 'A basic flipper.', type: 'Equipment', slot: 'Main Hand' },
+  colander_helm_base: { name: 'Colander Helm', description: 'Surprisingly protective.', type: 'Equipment', slot: 'Hat' },
+  oven_mitt_base: { name: 'Oven Mitt', description: 'Slightly singed.', type: 'Equipment', slot: 'Gloves' },
+  apron_base: { name: 'Chef\'s Apron', description: 'Keeps the splashes off.', type: 'Equipment', slot: 'Apron' },
+  galoshes_base: { name: 'Galoshes', description: 'Good for wading through spills.', type: 'Equipment', slot: 'Shoes' },
+  pot_lid_shield_base: { name: 'Pot Lid', description: 'An improvised shield.', type: 'Equipment', slot: 'Off Hand' },
+  ladle_base: { name: 'Ladle', description: 'Can scoop or bonk.', type: 'Equipment', slot: 'Main Hand' },
+  salt_necklace_base: { name: 'Salt Necklace', description: 'Wards off blandness.', type: 'Equipment', slot: 'Neck Tatts' },
+  chefs_hat_base: { name: 'Chef\'s Hat', description: 'Tall and proud.', type: 'Equipment', slot: 'Hat' },
+  chef_pants_base: { name: 'Chef\'s Pants', description: 'Checkered and comfy.', type: 'Equipment', slot: 'Pants' },
+  towel_cape_base: { name: 'Towel Cape', description: 'Not all heroes wear capes...', type: 'Equipment', slot: 'Apron' },
+  rolling_pin_forearms_base: { name: 'Rolling Pin Forearms', description: 'For kneading dough and enemies.', type: 'Equipment', slot: 'Arm Tatts' },
   mystic_roux: { name: 'Mystic Roux', description: 'Thickens more than just sauces.', type: 'Ingredient' },
-  salt_shard: { name: 'Salt Shard', description: 'Concentrated flavor.', type: 'Ingredient' }
+  salt_shard: { name: 'Salt Shard', description: 'Concentrated flavor.', type: 'Ingredient' },
+  cigarette_base: { name: 'Cigarette', description: 'A quick smoke.', type: 'Equipment', slot: 'Tobacco' },
+  adderall_base: { name: 'Adderall', description: 'Focus... intense focus.', type: 'Equipment', slot: 'Drugs' }
   // Add more base items
 }
 

@@ -1,11 +1,24 @@
 import { Item } from './Item'
 import type { Affix, AffixRarity } from './affixes' // Import Affix type and AffixRarity
+import type { GameStat } from '../types/stats' // Import the unified stat type
 
-type EquipmentSlot = 'Weapon' | 'Helm' | 'Body' | 'Accessory'
+type EquipmentSlot = 
+  | 'Hat'        // Renamed from Helm
+  | 'Jacket'     // Renamed from Body
+  | 'Pants'      // Renamed from Legs
+  | 'Shoes'      // Renamed from Feet
+  | 'Gloves'     // Renamed from Hands
+  | 'Apron'      // Renamed from Back
+  | 'Arm Tatts'  // Renamed from Tattoos
+  | 'Neck Tatts' // Renamed from Neck
+  | 'Main Hand'  // Renamed from Weapon
+  | 'Off Hand'   // New
+  | 'Tobacco'    // Renamed from Trinket 1
+  | 'Drugs'      // Renamed from Trinket 2
 
-// Define structure for stats/affixes (kitchen-themed)
+// Update StatModifier to use GameStat
 type StatModifier = {
-  stat: 'zest' | 'chopSpeed' | 'heatDamage' | 'vigor' | 'defense' // Added 'defense'
+  stat: GameStat
   value: number
 }
 
@@ -68,7 +81,7 @@ class Equipment extends Item {
   }
 
   // Helper to get total value for a specific stat from modifiers
-  getStatValue (statName: StatModifier['stat']): number {
+  getStatValue (statName: GameStat): number {
     return this.modifiers
       .filter(mod => mod.stat === statName)
       .reduce((sum, mod) => sum + mod.value, 0)

@@ -1,76 +1,95 @@
-import type { StatModifier } from './Equipment'
+import type { StatModifier, EquipmentSlot } from './Equipment'
+import type { GameStat } from '../types/stats'
 
 // Define affix rarity levels
 export type AffixRarity = 'common' | 'uncommon' | 'rare'
 
 // Define the type for a single affix (prefix or suffix)
 export interface Affix {
-  id: string // Unique ID (e.g., 'zesty_prefix')
+  id: string
   type: 'prefix' | 'suffix'
-  namePart: string // e.g., "Zesty", "of Slicing"
-  rarity: AffixRarity // Added rarity
-  levelRequirement?: number // For future scaling
-  allowedSlots?: string[] // Restrict to specific slots (e.g., 'Weapon') - Optional
-  generateModifiers: () => StatModifier[] // Function to generate random stat values within ranges
+  namePart: string
+  rarity: AffixRarity
+  allowedSlots?: EquipmentSlot[] // Corrected type name
+  generateModifiers: () => StatModifier[]
 }
 
-// --- Define Prefixes (with rarity) ---
+// --- Define Prefixes (using Core Stats) ---
 const PREFIXES: Affix[] = [
   {
     id: 'sturdy_prefix',
     type: 'prefix',
     namePart: 'Sturdy',
-    rarity: 'common', // Example rarity
-    generateModifiers: () => [
-      {
-        stat: 'defense',
-        value: Math.floor(Math.random() * 2) + 1 // 1-2 defense (Common)
-      }
+    rarity: 'common',
+    generateModifiers: (): StatModifier[] => [
+      { stat: 'defense', value: Math.floor(Math.random() * 3) + 1 } // 1-3 defense
     ]
   },
   {
-    id: 'zesty_prefix',
+    id: 'strong_prefix',
     type: 'prefix',
-    namePart: 'Zesty',
-    rarity: 'uncommon', // Example rarity
-    generateModifiers: () => [
-      {
-        stat: 'zest',
-        value: Math.floor(Math.random() * 3) + 2 // 2-4 zest (Uncommon)
-      }
+    namePart: 'Strong',
+    rarity: 'uncommon',
+    generateModifiers: (): StatModifier[] => [
+      { stat: 'strength', value: Math.floor(Math.random() * 3) + 1 } // 1-3 STR
     ]
   },
-  // Add more prefixes with different rarities...
+  {
+    id: 'agile_prefix',
+    type: 'prefix',
+    namePart: 'Agile',
+    rarity: 'uncommon',
+    generateModifiers: (): StatModifier[] => [
+      { stat: 'dexterity', value: Math.floor(Math.random() * 3) + 1 } // 1-3 DEX
+    ]
+  },
+  {
+    id: 'vital_prefix',
+    type: 'prefix',
+    namePart: 'Vital',
+    rarity: 'rare',
+    generateModifiers: (): StatModifier[] => [
+      { stat: 'constitution', value: Math.floor(Math.random() * 2) + 2 } // 2-3 CON (Rare)
+    ]
+  }
+  // Add more prefixes (e.g., Intelligent, Critical)
 ]
 
-// --- Define Suffixes (with rarity) ---
+// --- Define Suffixes (using Core Stats) ---
 const SUFFIXES: Affix[] = [
   {
-    id: 'of_vigor_suffix',
+    id: 'of_health_suffix',
     type: 'suffix',
-    namePart: 'of Vigor',
-    rarity: 'common', // Example rarity
-    generateModifiers: () => [
-      {
-        stat: 'vigor',
-        value: Math.floor(Math.random() * 11) + 5 // 5-15 vigor (Common)
-      }
+    namePart: 'of Health',
+    rarity: 'common',
+    generateModifiers: (): StatModifier[] => [
+      // Example: Flat Max Health Bonus (Needs handling in getEffectiveStats)
+      // { stat: 'maxHealth', value: Math.floor(Math.random() * 11) + 10 } // 10-20 MaxHP
+      // OR bonus to CON (preferred if using primary attributes)
+       { stat: 'constitution', value: Math.floor(Math.random() * 2) + 1 } // 1-2 CON
     ]
   },
   {
-    id: 'of_slicing_suffix',
+    id: 'of_criticals_suffix',
     type: 'suffix',
-    namePart: 'of Slicing',
-    rarity: 'uncommon', // Example rarity
-    allowedSlots: ['Weapon'],
-    generateModifiers: () => [
-      {
-        stat: 'chopSpeed',
-        value: parseFloat((Math.random() * 0.10 + 0.05).toFixed(2)) // 0.05-0.15 AS (Uncommon)
-      }
+    namePart: 'of Criticals',
+    rarity: 'uncommon',
+    allowedSlots: ['Gloves', 'Main Hand', 'Hat'], // Example slots
+    generateModifiers: (): StatModifier[] => [
+      { stat: 'critChance', value: parseFloat((Math.random() * 0.03 + 0.01).toFixed(2)) } // 1-4% Crit Chance
     ]
   },
-  // Add more suffixes with different rarities...
+  {
+    id: 'of_power_suffix',
+    type: 'suffix',
+    namePart: 'of Power',
+    rarity: 'rare',
+    allowedSlots: ['Main Hand', 'Gloves', 'Neck Tatts'],
+    generateModifiers: (): StatModifier[] => [
+      { stat: 'critDamage', value: parseFloat((Math.random() * 0.15 + 0.05).toFixed(2)) } // 5-20% Crit Damage
+    ]
+  }
+  // Add more suffixes (e.g., of Attack Speed, of Defense)
 ]
 
 // --- Weighted Rarity Selection --- 
@@ -81,28 +100,27 @@ const RARITY_WEIGHTS: Record<AffixRarity, number> = {
   rare: 0.07 // 7% chance
 }
 
-function selectAffixByRarity (affixes: Affix[]): Affix | null {
-  if (affixes.length === 0) return null
+function selectAffixByRarity (affixList: Affix[]): Affix | null {
+  if (affixList.length === 0) return null
 
-  const roll = Math.random()
-  let cumulative = 0
+  const rand = Math.random()
+  let cumulativeWeight = 0
 
-  for (const rarity of ['rare', 'uncommon', 'common'] as AffixRarity[]) {
-    cumulative += RARITY_WEIGHTS[rarity]
-    if (roll < cumulative) {
-      // Filter affixes by the selected rarity
-      const possibleAffixes = affixes.filter(a => a.rarity === rarity)
-      if (possibleAffixes.length > 0) {
-        // Pick a random affix from the filtered list
-        return possibleAffixes[Math.floor(Math.random() * possibleAffixes.length)]
-      } else {
-        // Fallback: if no affix of selected rarity exists, try next lower rarity (or return null)
-        // For simplicity now, we'll just let it potentially return null if a rarity is selected but no affix exists
-        // A more robust system would guarantee an affix if *any* are available for the slot.
+  for (const rarity of ['common', 'uncommon', 'rare'] as AffixRarity[]) {
+    const weight = RARITY_WEIGHTS[rarity]
+    cumulativeWeight += weight
+    if (rand <= cumulativeWeight) {
+      // Filter affixes of this rarity and pick one randomly
+      const candidates = affixList.filter(a => a.rarity === rarity)
+      if (candidates.length > 0) {
+        return candidates[Math.floor(Math.random() * candidates.length)]
       }
+      // Fallback if no affixes of this rarity exist (should ideally not happen with good data)
+      break
     }
   }
-  return null // Should theoretically not be reached if weights sum to 1 and common affixes exist
+  // Fallback to random affix if something went wrong
+  return affixList[Math.floor(Math.random() * affixList.length)]
 }
 
 // --- Refined getRandomAffixes function --- 
@@ -115,14 +133,13 @@ export function getRandomAffixes (itemSlot?: string): {
 
   // Determine available affixes for the slot
   const availablePrefixes = PREFIXES.filter(p =>
-    !p.allowedSlots || !itemSlot || p.allowedSlots.includes(itemSlot)
+    !p.allowedSlots || !itemSlot || (p.allowedSlots as string[]).includes(itemSlot)
   )
   const availableSuffixes = SUFFIXES.filter(s =>
-    !s.allowedSlots || !itemSlot || s.allowedSlots.includes(itemSlot)
+    !s.allowedSlots || !itemSlot || (s.allowedSlots as string[]).includes(itemSlot)
   )
 
   // Decide # of affixes (e.g., based on item quality roll - simple version now)
-  // Let's say: 60% chance for 1 affix, 40% chance for 2 affixes
   const numAffixes = Math.random() < 0.6 ? 1 : 2
   const affixPool: (Affix | null)[] = []
 

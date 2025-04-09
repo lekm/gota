@@ -1,10 +1,10 @@
 import { Renderer } from './Renderer'
-import { Hero, type HeroStats } from './entities/Hero'
+import { Hero, type HeroStats, type DetailedHeroStats } from './entities/Hero'
 import { Monster } from './entities/Monster'
 import type { Item } from './items/Item' // Import Item type
 import { useInventoryStore, type EquippedItems } from '@/store/inventoryStore' // Import zustand store and EquippedItems type
 import { useCombatLogStore } from '@/store/combatLogStore' // Import combat log store
-import { useGameSessionStore, type GameStatus, type GameOverReason, type HeroXPInfo } from '@/store/gameSessionStore' // Import session store and GameStatus
+import { useGameSessionStore, type GameStatus, type GameOverReason, type HeroXPInfo } from '@/store/gameSessionStore' // Import session store and GameStatus, GameOverReason
 
 class GameManager {
   private renderer: Renderer
@@ -26,7 +26,7 @@ class GameManager {
   // Reference to the store action (obtained outside constructor)
   private addItemsToInventory: (items: Item[]) => void
   private addLogMessage: (message: string) => void // Reference to log store action
-  private updateSessionStats: (stats: HeroStats | null) => void // Ref to session store action
+  private updateSessionStats: (stats: DetailedHeroStats | null) => void // Ref to session store action
   private setSessionWave: (wave: number) => void
   private setSessionTime: (time: number) => void
   private setSessionGameOver: (isOver: boolean) => void
@@ -139,25 +139,30 @@ class GameManager {
     const timeRemaining = Math.max(0, this.sessionTimeLimit - this.elapsedTime)
     this.setSessionTime(timeRemaining)
 
-    // Sync hero stats and level/XP (every frame for now)
-    if (this.hero) {
-        const equippedItems = useInventoryStore.getState().equippedItems
-        this.updateSessionStats(this.hero.getEffectiveStats(equippedItems))
-        // Sync level/XP info
-        this.setHeroLevelAndXPStore(this.hero.level, { currentXP: this.hero.currentXP, xpToNextLevel: this.hero.xpToNextLevel })
+    const currentTime = performance.now()
+    const equippedItems = useInventoryStore.getState().equippedItems
+    const effectiveStats = this.hero?.getEffectiveStats(equippedItems)
+
+    // Re-sync store stats every frame
+    if (this.hero && effectiveStats) {
+        this.updateSessionStats(effectiveStats)
     }
 
-    const currentTime = performance.now()
+    // --- Hero Attack Logic ---
+    const targetMonster = this.monsters.find(m => m.isAlive());
 
-    // --- Hero Attack Logic --- Uses hero.getEffectiveStats() now
-    const targetMonster = this.monsters.find(m => m.isAlive())
-    if (this.hero && targetMonster) { // Check hero exists
-      const effectiveStats = this.hero.getEffectiveStats(useInventoryStore.getState().equippedItems) // Pass current gear
-      const heroAttackCooldown = 1 / effectiveStats.attackSpeed
+    if (this.hero && effectiveStats && targetMonster) {
+      const heroAttackCooldown = 1 / effectiveStats.attackSpeed.final
       if ((currentTime - this.lastHeroAttackTime) / 1000 >= heroAttackCooldown) {
-        const damageDealt = effectiveStats.damage
+        const { damage: damageDealt, isCrit } = this.hero.calculateAttackDamage(
+          effectiveStats.damage.final,
+          effectiveStats.critChance.final,
+          effectiveStats.critDamage.final
+        );
+        
         targetMonster.takeDamage(damageDealt)
-        this.addLogMessage(`Hero hits ${targetMonster.name} for ${damageDealt} damage.`)
+        const critText = isCrit ? ' (CRIT!)' : ''
+        this.addLogMessage(`Hero hits ${targetMonster.name} for ${damageDealt} damage${critText}.`)
         if (!targetMonster.isAlive()) {
           this.addLogMessage(`${targetMonster.name} defeated!`)
         }
@@ -167,23 +172,33 @@ class GameManager {
 
     // --- Monster Logic ---
     this.monsters.forEach(monster => {
-      if (!monster.isAlive()) return
-      const dx = this.hero!.x - monster.x // Non-null assertion ok if hero must exist here
-      const moveSpeed = 50
-      if (Math.abs(dx) > 50) {
+      if (!monster.isAlive() || !this.hero || !effectiveStats) return
+      
+      const dx = this.hero.x - monster.x
+      const moveSpeed = 50 // Example speed
+      const attackRange = 50 // Example range
+
+      if (Math.abs(dx) > attackRange) {
+        // Move towards hero
         monster.x += Math.sign(dx) * moveSpeed * deltaTime
       } else {
-        // Attack
+        // Attack Hero
         const monsterAttackCooldown = 1 / monster.stats.attackSpeed
         const lastAttackTime = this.lastMonsterAttackTimes.get(monster) || 0
         if ((currentTime - lastAttackTime) / 1000 >= monsterAttackCooldown) {
           const damageDealt = monster.stats.damage
-          // Apply damage using effective stats for defense
-          const equippedItems = useInventoryStore.getState().equippedItems
-          this.hero!.takeDamage(damageDealt, equippedItems)
+          this.hero.takeDamage(damageDealt, effectiveStats.defense.final)
           this.addLogMessage(`${monster.name} hits Hero for ${damageDealt} damage.`)
-          if (!this.hero!.isAlive()) {
-            this.addLogMessage(`Hero has been defeated!`)
+          
+          // Sync stats immediately after damage taken
+          const updatedDetailedStats = this.hero.getEffectiveStats(equippedItems)
+          this.updateSessionStats(updatedDetailedStats)
+          
+          if (!this.hero.isAlive()) {
+            this.addLogMessage('Hero has been defeated!');
+            this.setSessionGameState('GameOver', 'HeroDefeated') 
+            this.stop()
+            return;
           }
           this.lastMonsterAttackTimes.set(monster, currentTime)
         }
@@ -192,44 +207,45 @@ class GameManager {
 
     // --- Handle Monster Deaths & Loot & XP --- 
     const newlyDeadMonsters = this.monsters.filter(m => !m.isAlive() && this.lastMonsterAttackTimes.get(m) !== -1)
-    newlyDeadMonsters.forEach(deadMonster => {
-      const { loot, xp } = deadMonster.getDeathRewards() // Get loot and XP
-      
-      if (loot.length > 0) {
-        this.addItemsToInventory(loot)
-        loot.forEach(item => this.addLogMessage(`Looted: ${item.name}`))
-      }
-      
-      if (xp > 0 && this.hero) {
-         const leveledUp = this.hero.gainXP(xp)
-         this.addLogMessage(`Gained ${xp} XP.`)
-         this.setHeroLevelAndXPStore(this.hero.level, { currentXP: this.hero.currentXP, xpToNextLevel: this.hero.xpToNextLevel })
-         if (leveledUp) {
-            this.addLogMessage(`%cHERO LEVELED UP to ${this.hero.level}!`, 'color: yellow; font-weight: bold;');
-            // Base stats were updated in gainXP.
-            // Re-sync store stats using the updated baseStats directly.
-            // This avoids the problematic getEffectiveStats call here.
-            // The effective stats including gear will sync at the start of the next update frame.
-            this.updateSessionStats(this.hero.baseStats) // Sync using updated baseStats
-         }
-      }
-      
-      // Mark as processed
-      this.lastMonsterAttackTimes.set(deadMonster, -1)
-    })
+    if (newlyDeadMonsters.length > 0 && this.hero) {
+        newlyDeadMonsters.forEach(deadMonster => {
+            const { loot, xp } = deadMonster.getDeathRewards()
+            
+            if (loot.length > 0) {
+                this.addItemsToInventory(loot)
+                loot.forEach(item => this.addLogMessage(`Looted: ${item.name}`))
+            }
+            
+            if (xp > 0 && this.hero) {
+                const leveledUp = this.hero.gainXP(xp)
+                this.addLogMessage(`Gained ${xp} XP.`)
+                this.setHeroLevelAndXPStore(this.hero.level, { currentXP: this.hero.currentXP, xpToNextLevel: this.hero.xpToNextLevel })
+                if (leveledUp) {
+                    this.addLogMessage(`HERO LEVELED UP to ${this.hero.level}!`);
+                    const leveledUpStats = this.hero.getEffectiveStats(equippedItems)
+                    this.updateSessionStats(leveledUpStats)
+                }
+            }
+            
+            this.lastMonsterAttackTimes.set(deadMonster, -1)
+        })
 
-    // --- Cleanup Dead Monsters ---
-    const aliveMonsters = this.monsters.filter(m => m.isAlive())
-    if (aliveMonsters.length < this.monsters.length) {
-      const deadCount = this.monsters.length - aliveMonsters.length
-      // console.log(`Cleaning up ${deadCount} dead monsters`);
-      // Remove processed dead monsters from the attack timer map
-      this.lastMonsterAttackTimes.forEach((time, monster) => {
-        if (time === -1 || !monster.isAlive()) { // Check for marker or if somehow missed
-          this.lastMonsterAttackTimes.delete(monster)
+        // --- Cleanup Dead Monsters ---
+        const aliveMonsters = this.monsters.filter(m => m.isAlive())
+        if (aliveMonsters.length < this.monsters.length) {
+            this.lastMonsterAttackTimes.forEach((time, monster) => {
+                if (time === -1 || !monster.isAlive()) {
+                this.lastMonsterAttackTimes.delete(monster)
+                }
+            })
+            this.monsters = aliveMonsters
         }
-      })
-      this.monsters = aliveMonsters
+    }
+    
+    // Re-sync effective stats at end of frame
+    if (this.hero) {
+         const finalDetailedStats = this.hero.getEffectiveStats(equippedItems);
+         this.updateSessionStats(finalDetailedStats);
     }
 
     // --- Check for Wave Clear ---
@@ -244,19 +260,19 @@ class GameManager {
   }
 
   private gameOver (heroSurvived: boolean) {
-    const reason: GameOverReason = heroSurvived ? 'TimeUp' : 'Defeat'
-    this.setSessionGameState('GameOver', reason) // Pass the reason correctly
-    if (!heroSurvived) {
-      this.addLogMessage('Session ended: Hero defeated!')
-      // console.log('Hero was defeated!')
-    } else if (this.elapsedTime >= this.sessionTimeLimit) {
-      this.addLogMessage('Session ended: Time limit reached!')
-      // console.log('Time limit reached!')
+    if (!this.isRunning) return // Already stopped or stopping
+
+    this.stop() // Stop the loop
+
+    const reason: GameOverReason = heroSurvived ? 'TimeExpired' : 'HeroDefeated';
+    this.setSessionGameState('GameOver', reason) // Use the correct store action
+
+    if (reason === 'HeroDefeated') {
+        this.addLogMessage('Game Over: Hero was defeated!')
+    } else {
+        this.addLogMessage('Game Over: Time ran out!')
     }
-    // console.log('Final Inventory:', useInventoryStore.getState().items)
-    this.updateSessionStats(null) // Clear hero stats on game over
-    this.setHeroLevelAndXPStore(0, null) // Clear level/XP display
-    this.stop() // Stop the internal loop, state handles UI
+    console.log(`Game Over! Reason: ${reason}`) 
   }
 
   private render () {
