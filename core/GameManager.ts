@@ -4,7 +4,7 @@ import { Monster } from './entities/Monster'
 import type { Item } from './items/Item' // Import Item type
 import { useInventoryStore, type EquippedItems } from '@/store/inventoryStore' // Import zustand store and EquippedItems type
 import { useCombatLogStore } from '@/store/combatLogStore' // Import combat log store
-import { useGameSessionStore, type GameStatus, type GameOverReason } from '@/store/gameSessionStore' // Import session store and GameStatus
+import { useGameSessionStore, type GameStatus, type GameOverReason, type HeroXPInfo } from '@/store/gameSessionStore' // Import session store and GameStatus
 
 class GameManager {
   private renderer: Renderer
@@ -31,6 +31,7 @@ class GameManager {
   private setSessionTime: (time: number) => void
   private setSessionGameOver: (isOver: boolean) => void
   private setSessionGameState: (status: GameStatus, reason?: GameOverReason) => void // Correct signature
+  private setHeroLevelAndXPStore: (level: number, xpInfo: HeroXPInfo | null) => void // Ref to new action
   private resetSessionStore: () => void
 
   constructor (context: CanvasRenderingContext2D) {
@@ -45,6 +46,7 @@ class GameManager {
     this.setSessionTime = sessionStoreActions.setTimeRemaining
     this.setSessionGameOver = sessionStoreActions.setGameOver
     this.setSessionGameState = sessionStoreActions.setGameState
+    this.setHeroLevelAndXPStore = sessionStoreActions.setHeroLevelAndXP // Get new action
     this.resetSessionStore = sessionStoreActions.resetSession
 
     // Don't initialize game immediately, wait for start() call
@@ -52,7 +54,6 @@ class GameManager {
   }
 
   private initializeGameState (canvasWidth: number, canvasHeight: number) {
-    // Reset stores (resetSessionStore sets gameState to NotStarted)
     this.resetSessionStore()
     useCombatLogStore.getState().clearLog()
     // State is set to InProgress by start() method
@@ -67,31 +68,39 @@ class GameManager {
     // Get currently equipped items from the store
     const equippedItems = useInventoryStore.getState().equippedItems
 
-    // Create the hero - Pass equipped items to constructor or stat calculation
-    this.hero = new Hero(100, canvasHeight / 2, equippedItems) // Modify Hero constructor later if needed
-    this.updateSessionStats(this.hero.getEffectiveStats()) // Update store with calculated stats
+    // Create the hero
+    this.hero = new Hero(100, canvasHeight / 2, useInventoryStore.getState().equippedItems)
+    // Initial sync of all session state
+    this.updateSessionStats(this.hero.getEffectiveStats(useInventoryStore.getState().equippedItems))
+    this.setHeroLevelAndXPStore(this.hero.level, { currentXP: this.hero.currentXP, xpToNextLevel: this.hero.xpToNextLevel })
+    this.setSessionWave(this.waveNumber)
+    this.setSessionTime(this.sessionTimeLimit) // Set initial time
 
-    // Create the first wave of monsters
     this.spawnWave(canvasWidth, canvasHeight)
 
     // console.log('Game state initialized:', this.hero, this.monsters)
   }
 
   private spawnWave (canvasWidth: number, canvasHeight: number) {
-    // Simple spawning logic for wave 1
-    // TODO: Expand this for different waves
-    this.monsters = [
-      new Monster(
-        canvasWidth - 150,
-        canvasHeight / 2,
-        `Angry Asparagus (W${this.waveNumber})`,
-        // Example: Scale health slightly based on wave
-        { health: 20 + (this.waveNumber - 1) * 5, maxHealth: 20 + (this.waveNumber - 1) * 5 }
-      )
-    ]
-    this.setSessionWave(this.waveNumber) // Update store wave number
-    this.addLogMessage(`Wave ${this.waveNumber} begins!`) // Log wave start
-    // console.log(`Spawning Wave ${this.waveNumber}`)
+    this.monsters = [] // Clear previous wave
+    const monsterCount = 1 + Math.floor(this.waveNumber / 5) // Example: More monsters every 5 waves
+    
+    for (let i = 0; i < monsterCount; i++) {
+        // Simple positioning variation
+        const spawnX = canvasWidth - 150 - (i * 40)
+        const spawnY = canvasHeight / 2 + (Math.random() * 60 - 30)
+        this.monsters.push(
+          new Monster(
+            spawnX,
+            spawnY,
+            `Angry Asparagus`, // Base name, maybe add index later
+            this.waveNumber // Pass current wave number
+          )
+        )
+    }
+    
+    this.setSessionWave(this.waveNumber)
+    this.addLogMessage(`Wave ${this.waveNumber} begins! (${monsterCount} monsters)`) 
   }
 
   private gameLoop = (timestamp: number) => {
@@ -130,11 +139,12 @@ class GameManager {
     const timeRemaining = Math.max(0, this.sessionTimeLimit - this.elapsedTime)
     this.setSessionTime(timeRemaining)
 
-    // Sync hero stats - use effective stats including equipment
+    // Sync hero stats and level/XP (every frame for now)
     if (this.hero) {
-        // Fetch equipped items again in case they changed mid-session (though not possible yet)
         const equippedItems = useInventoryStore.getState().equippedItems
         this.updateSessionStats(this.hero.getEffectiveStats(equippedItems))
+        // Sync level/XP info
+        this.setHeroLevelAndXPStore(this.hero.level, { currentXP: this.hero.currentXP, xpToNextLevel: this.hero.xpToNextLevel })
     }
 
     const currentTime = performance.now()
@@ -180,15 +190,30 @@ class GameManager {
       }
     })
 
-    // --- Handle Monster Deaths & Loot --- 
-    const newlyDeadMonsters = this.monsters.filter(m => !m.isAlive() && this.lastMonsterAttackTimes.get(m) !== -1) // Ensure not already processed
+    // --- Handle Monster Deaths & Loot & XP --- 
+    const newlyDeadMonsters = this.monsters.filter(m => !m.isAlive() && this.lastMonsterAttackTimes.get(m) !== -1)
     newlyDeadMonsters.forEach(deadMonster => {
-      const loot = deadMonster.generateLoot()
+      const { loot, xp } = deadMonster.getDeathRewards() // Get loot and XP
+      
       if (loot.length > 0) {
-        // console.log('Loot dropped:', loot)
         this.addItemsToInventory(loot)
         loot.forEach(item => this.addLogMessage(`Looted: ${item.name}`))
       }
+      
+      if (xp > 0 && this.hero) {
+         const leveledUp = this.hero.gainXP(xp)
+         this.addLogMessage(`Gained ${xp} XP.`)
+         this.setHeroLevelAndXPStore(this.hero.level, { currentXP: this.hero.currentXP, xpToNextLevel: this.hero.xpToNextLevel })
+         if (leveledUp) {
+            this.addLogMessage(`%cHERO LEVELED UP to ${this.hero.level}!`, 'color: yellow; font-weight: bold;');
+            // Base stats were updated in gainXP.
+            // Re-sync store stats using the updated baseStats directly.
+            // This avoids the problematic getEffectiveStats call here.
+            // The effective stats including gear will sync at the start of the next update frame.
+            this.updateSessionStats(this.hero.baseStats) // Sync using updated baseStats
+         }
+      }
+      
       // Mark as processed
       this.lastMonsterAttackTimes.set(deadMonster, -1)
     })
@@ -230,6 +255,7 @@ class GameManager {
     }
     // console.log('Final Inventory:', useInventoryStore.getState().items)
     this.updateSessionStats(null) // Clear hero stats on game over
+    this.setHeroLevelAndXPStore(0, null) // Clear level/XP display
     this.stop() // Stop the internal loop, state handles UI
   }
 

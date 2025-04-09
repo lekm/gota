@@ -1,5 +1,6 @@
 import type { Equipment, StatModifier, EquipmentSlot } from '../items/Equipment'
 import type { EquippedItems } from '@/store/inventoryStore' // Import EquippedItems type
+import { calculateXPForLevel, STAT_GAINS_PER_LEVEL } from '../config' // Import leveling config
 
 interface HeroStats {
   health: number
@@ -14,11 +15,18 @@ class Hero {
   x: number
   y: number
   baseStats: HeroStats // Store the hero's base stats separately
+  level: number
+  currentXP: number
+  xpToNextLevel: number
   // Equipped items are passed in for calculations, not stored directly on Hero instance
 
   constructor (x: number, y: number, initialEquipment?: EquippedItems) {
     this.x = x
     this.y = y
+    this.level = 1
+    this.currentXP = 0
+    this.xpToNextLevel = calculateXPForLevel(this.level)
+
     // Base stats for Chef Antoine
     this.baseStats = {
       health: 100,
@@ -44,7 +52,6 @@ class Hero {
           switch (mod.stat) {
             case 'vigor': // Example: Vigor increases Max Health
               effective.maxHealth += mod.value
-              effective.health += mod.value // Also increase current health? Or manage separately?
               break
             case 'zest': // Example: Zest increases Damage
               effective.damage += mod.value
@@ -52,18 +59,47 @@ class Hero {
             case 'chopSpeed': // Example: Chop Speed increases Attack Speed
               effective.attackSpeed += mod.value // Assuming flat increase for now
               break
-            // TODO: Add cases for other stats (defense, heatDamage etc.)
+            case 'defense': // Handle defense from gear
+              effective.defense += mod.value
+              break
+            // TODO: Add cases for other stats (heatDamage etc.)
           }
         })
       })
     }
-    // Ensure health doesn't exceed new maxHealth
-    effective.health = Math.min(effective.health, effective.maxHealth);
-
-    // Prevent stats from going below a certain threshold if needed (e.g., attack speed > 0)
-    effective.attackSpeed = Math.max(0.1, effective.attackSpeed); // Ensure minimum attack speed
-
+    // Apply level-based increases directly to baseStats on level up
+    // We only need to ensure current health doesn't exceed max
+    effective.health = Math.min(this.baseStats.health, effective.maxHealth);
+    effective.attackSpeed = Math.max(0.1, effective.attackSpeed);
     return effective
+  }
+
+  gainXP (amount: number): boolean {
+    let leveledUp = false
+    this.currentXP += amount
+    console.log(`Hero gained ${amount} XP (Total: ${this.currentXP}/${this.xpToNextLevel})`);
+
+    while (this.currentXP >= this.xpToNextLevel) {
+      leveledUp = true
+      this.level++
+      this.currentXP -= this.xpToNextLevel
+      this.xpToNextLevel = calculateXPForLevel(this.level)
+      console.log(`%cLEVEL UP! Reached Level ${this.level}!`, 'color: yellow; font-weight: bold;');
+
+      // Apply base stat gains
+      this.baseStats.maxHealth += STAT_GAINS_PER_LEVEL.maxHealth
+      // Increase current health proportionally or fully heal? Let's add the gain.
+      this.baseStats.health += STAT_GAINS_PER_LEVEL.maxHealth 
+      this.baseStats.damage += STAT_GAINS_PER_LEVEL.damage
+      this.baseStats.defense += STAT_GAINS_PER_LEVEL.defense
+      this.baseStats.attackSpeed += STAT_GAINS_PER_LEVEL.attackSpeed
+
+      // Ensure health doesn't exceed new max after gain
+      this.baseStats.health = Math.min(this.baseStats.health, this.baseStats.maxHealth);
+
+      // TODO: Trigger level up effect/notification in UI via store?
+    }
+    return leveledUp
   }
 
   takeDamage (damage: number, equippedItems?: EquippedItems) {
