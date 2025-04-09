@@ -90,8 +90,8 @@ export default function HomePage() {
 
         </div>
         
-        {/* Bottom: Graventory - Keep mt-auto and fixed height */}
-        <div className="h-48 flex-shrink-0 border-t border-gray-600 mt-auto pt-2"> 
+        {/* Bottom: Graventory - Increase height */}
+        <div className="h-64 flex-shrink-0 border-t border-gray-600 mt-auto pt-2"> 
           <Graventory />
         </div>
       </section>
