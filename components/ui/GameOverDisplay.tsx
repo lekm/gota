@@ -7,7 +7,7 @@ import { Equipment } from '@/core/items/Equipment'
 import { Item } from '@/core/items/Item'
 
 function GameOverDisplay () {
-  const { gameState, gameOverReason, waveNumber, resetSession, setGameState } = useGameSessionStore((state) => state)
+  const { gameState, gameOverReason, waveNumber, resetSession } = useGameSessionStore((state) => state)
   const finalLoot = useInventoryStore((state) => state.items) // Get items at time of game over
 
   if (gameState !== 'GameOver') {
@@ -33,7 +33,7 @@ function GameOverDisplay () {
     <div className="absolute inset-0 bg-black bg-opacity-75 flex flex-col items-center justify-center z-20">
       <div className="bg-gray-800 p-8 rounded-lg shadow-xl text-center max-w-md w-full">
         <h2 className="text-4xl font-bold mb-4 text-red-500">
-          {gameOverReason === 'Defeat' ? 'DEFEAT' : 'TIME UP'}
+          {gameOverReason === 'HeroDefeated' ? 'DEFEAT' : 'TIME UP'}
         </h2>
 
         <p className="text-xl mb-6 text-gray-300">

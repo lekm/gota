@@ -1,16 +1,14 @@
 'use client' // Need client component for Zustand hook and button onClick
 
 import React, { useRef, useState, useEffect, useCallback } from 'react' // Import useRef, useState, useEffect, useCallback
-import Image from "next/image";
 import { GameCanvas, type GameCanvasHandle } from '@/components/game/GameCanvas'
 import { Graventory } from '@/components/ui/Graventory'
 import { CombatLog } from '@/components/ui/CombatLog'
 import { HeroStatsDisplay } from '@/components/ui/HeroStatsDisplay'
 import { SessionInfoDisplay } from '@/components/ui/SessionInfoDisplay'
-import { GameOverDisplay } from '@/components/ui/GameOverDisplay' // Import GameOverDisplay
 import { HeroPaperDoll } from '@/components/ui/HeroPaperDoll' // Import Paper Doll
 import { useGameSessionStore } from '@/store/gameSessionStore' // Import store hook
-import { GameManagerProvider, useGameManager } from '@/hooks/useGameManager'
+import { GameManagerProvider } from '@/hooks/useGameManager' // Keep Provider, remove hook import
 import { Button } from "@/components/ui/button"
 import type { GameManager } from '@/core/GameManager' // Import GameManager type
 
@@ -54,13 +52,6 @@ export default function HomePage() {
       console.warn('handleStartGame: gameManagerInstance is null!');
     }
   }
-  const handleStopGame = () => {
-     if (gameManagerInstance) {
-      gameManagerInstance.stop(); // Call internal stop
-      // Explicitly set state via store action if needed
-      useGameSessionStore.getState().setGameState('NotStarted'); 
-    }
-  }
 
   const handleUseGravy = (gravyId: string) => {
     gameManagerForButtons?.useGravy(gravyId);
@@ -73,7 +64,7 @@ export default function HomePage() {
 
     // Use ResizeObserver for accurate element size
     const resizeObserver = new ResizeObserver(entries => {
-      for (let entry of entries) {
+      for (const entry of entries) {
         const { width, height } = entry.contentRect;
         console.log('ResizeObserver triggered. New size:', { width, height }); // Log the size
         setCanvasSize({ width, height });
@@ -131,7 +122,7 @@ export default function HomePage() {
                       Welcome, Chef! Defeat waves of monstrous ingredients before the timer runs out!
                     </p>
                     <p className="text-sm mb-6 text-gray-400">
-                      Click "Start Session" to begin. Loot drops appear below. Equip items by clicking "Equip". Monitor your stats and combat events on the right.
+                      Click &quot;Start Session&quot; to begin. Loot drops appear below. Equip items by clicking &quot;Equip&quot;. Monitor your stats and combat events on the right.
                     </p>
                     <button 
                       onClick={handleStartGame} 

@@ -76,6 +76,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, GameCanvasProps>((props, ref) =>
       console.log('GameCanvas cleanup running (GameManager stop called).')
     }
     // Depend on props that influence canvas/manager setup
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.width, props.height, props.onGameManagerReady])
 
   // Remove the useEffect that listened to gameState
